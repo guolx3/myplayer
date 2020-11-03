@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">MyPlayer</string>
+    <string name="btn_play">播放</string>
+    <string name="btn_pause">暂停</string>
+    <string name="btn_replay">重播</string>
+    <string name="btn_stop">停止</string>
+</resources>
