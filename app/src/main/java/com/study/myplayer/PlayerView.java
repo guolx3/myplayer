@@ -1,69 +1,36 @@
 package com.study.myplayer;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-
-import android.Manifest;
-import android.app.Activity;
 import android.content.Context;
-import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.graphics.Color;
-import android.media.AudioManager;
 import android.media.MediaPlayer;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.os.PersistableBundle;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.VideoView;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
+import androidx.annotation.NonNull;
+
 import java.util.Formatter;
 
-import static android.view.Gravity.CENTER_VERTICAL;
-import static android.view.View.generateViewId;
-import static android.widget.RelativeLayout.ALIGN_PARENT_BOTTOM;
-import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
-import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
-import static android.widget.RelativeLayout.BELOW;
-import static android.widget.RelativeLayout.LEFT_OF;
-import static android.widget.RelativeLayout.RIGHT_OF;
+public class PlayerView extends RelativeLayout {
+    private final String TAG = "PlayerView";
 
-public class MainActivity extends AppCompatActivity {
-    private final String TAG = "MainActivity";
-    private final int UPDATE_TIME = 1;
+    private  Context mContext;
     private String videoPath;
-
-    private RelativeLayout parent;
 
     private MediaPlayer mMediaPlayer;
     private int currPosition = 0;
     private boolean initialized = false;
 
     private SurfaceView mSurfaceView;
+    private SurfaceHolder mSurfaceHolder;
 
     private RelativeLayout rlController;
     private ImageButton btnPlay;
@@ -71,77 +38,73 @@ public class MainActivity extends AppCompatActivity {
     private SeekBar playerBar;
     private TextView tvShowTime;
     private boolean isControllerShow = false;
-    private String durationText;
 
-    private Handler mHandler = new Handler(){
-        @Override
-        public void handleMessage(@NonNull Message msg) {
-            switch (msg.what){
-                case UPDATE_TIME:
-                    updateTime();
-                    break;
-            }
-        }
-    };
+    public PlayerView(Context context) {
+        super(context);
+    }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+    public PlayerView(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
 
-        parent = findViewById(R.id.parent);
-        parent.setBackgroundColor(Color.WHITE);
-
+    public PlayerView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+        mContext = context;
+        initThisView();
         addAllView();
         setViewListener();
+        initMediaPlayer();
+    }
+
+    private void initThisView(){
+        this.setBackgroundColor(Color.BLACK);
     }
 
     private void addAllView(){
         addSurfaceView();
         addControllerView();
+
     }
 
     private void setViewListener(){
         btnPlay.setOnClickListener(btnPlayOnClickListener);
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     private void initMediaPlayer(){
-        try{
+        if(!initialized){
             mMediaPlayer = new MediaPlayer();
-            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            mMediaPlayer.setDataSource(getResources().getAssets().openFd("test_1080_60.mp4"));
-            mMediaPlayer.setDisplay(mSurfaceView.getHolder());
             mMediaPlayer.prepareAsync();
-            mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                @Override
-                public void onPrepared(MediaPlayer mp) {
-                    Log.i(TAG, "onPrepared");
-                    initialized = true;
-                    mMediaPlayer.setDisplay(mSurfaceView.getHolder());
+        }
+        mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+            @Override
+            public void onPrepared(MediaPlayer mp) {
+                Log.i(TAG, "onPrepared");
+                initialized = true;
+                try {
+                    mMediaPlayer.setDataSource(videoPath);
+                    mMediaPlayer.setDisplay(mSurfaceHolder);
                     initPlayerBarTime(mMediaPlayer.getDuration());
                     intSurfaceViewSize(mMediaPlayer.getVideoWidth(), mMediaPlayer.getVideoHeight());
+                }catch (Exception e){
+                    e.printStackTrace();
                 }
-            });
-            initialized = true;
-        }catch (Exception e) {
-            e.printStackTrace();
-        }
+            }
+        });
     }
 
     private void addSurfaceView(){
-        mSurfaceView = new SurfaceView(this);
-        RelativeLayout.LayoutParams sf_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+        mSurfaceView = new SurfaceView(mContext);
+        RelativeLayout.LayoutParams sf_lp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 600);
         sf_lp.addRule(CENTER_VERTICAL);
         mSurfaceView.setLayoutParams(sf_lp);
-        mSurfaceView.setId(View.generateViewId());
-        parent.addView(mSurfaceView);
+        addView(mSurfaceView);
         mSurfaceView.requestFocus();
         mSurfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder holder) {
                 Log.i(TAG, "surfaceCreated");
+                mSurfaceHolder = mSurfaceView.getHolder();
             }
 
             @Override
@@ -157,13 +120,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addControllerView(){
-        rlController = new RelativeLayout(this);
-        RelativeLayout.LayoutParams vd_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+        rlController = new RelativeLayout(mContext);
+        RelativeLayout.LayoutParams vd_lp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 100);
-        vd_lp.addRule(BELOW, mSurfaceView.getId());
+        vd_lp.addRule(ALIGN_PARENT_BOTTOM);
         rlController.setLayoutParams(vd_lp);
         rlController.setBackgroundColor(Color.LTGRAY);
-        parent.addView(rlController);
+        addView(rlController);
 
         addBtnPlay();
         addPlayerBar();
@@ -172,10 +135,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addBtnPlay(){
-        btnPlay = new ImageButton(this);
-        RelativeLayout.LayoutParams btp_lp = new RelativeLayout.LayoutParams(100, 100);
+        btnPlay = new ImageButton(mContext);
+        RelativeLayout.LayoutParams btp_lp = new LayoutParams(100, 100);
         btp_lp.addRule(ALIGN_PARENT_LEFT);
-        btnPlay.setId(generateViewId());
+        btnPlay.setId(View.generateViewId());
         btnPlay.setLayoutParams(btp_lp);
         btnPlay.setPadding(0, 5, 0, 5);
         btnPlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -185,21 +148,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addPlayerBar(){
-        playerBar = new SeekBar(this);
+        playerBar = new SeekBar(mContext);
         RelativeLayout.LayoutParams pb_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT);
         pb_lp.rightMargin = 10;
         pb_lp.addRule(RIGHT_OF, btnPlay.getId());
-        playerBar.setId(generateViewId());
+        playerBar.setId(View.generateViewId());
         playerBar.setLayoutParams(pb_lp);
         rlController.addView(playerBar);
     }
 
     private void addBtnChangeOrientation(){
-        btnChangeOrientation = new ImageButton(this);
-        RelativeLayout.LayoutParams btc_lp = new RelativeLayout.LayoutParams(100, 100);
+        btnChangeOrientation = new ImageButton(mContext);
+        RelativeLayout.LayoutParams btc_lp = new LayoutParams(100, 100);
         btc_lp.addRule(ALIGN_PARENT_RIGHT);
-        btnChangeOrientation.setId(generateViewId());
+        btnChangeOrientation.setId(View.generateViewId());
         btnChangeOrientation.setLayoutParams(btc_lp);
         btnChangeOrientation.setImageResource(android.R.drawable.ic_menu_always_landscape_portrait);
         btnPlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -208,8 +171,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addTvShowTime(){
-        tvShowTime = new TextView(this);
-        RelativeLayout.LayoutParams tv_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+        tvShowTime = new TextView(mContext);
+        RelativeLayout.LayoutParams tv_lp = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         tv_lp.addRule(LEFT_OF, btnChangeOrientation.getId());
         tv_lp.rightMargin = 10;
@@ -220,13 +183,10 @@ public class MainActivity extends AppCompatActivity {
         rlController.addView(tvShowTime);
     }
 
-    private View.OnClickListener btnPlayOnClickListener = new View.OnClickListener() {
-        @RequiresApi(api = Build.VERSION_CODES.N)
+    private View.OnClickListener btnPlayOnClickListener = new OnClickListener() {
         @Override
         public void onClick(View v) {
-            Log.i(TAG, "onClick");
-            Toast.makeText(getApplication(), "btnPlay on click", Toast.LENGTH_LONG).show();
-            if(initialized) {
+            if(mMediaPlayer != null && initialized) {
                 if (mMediaPlayer.isPlaying()) {
                     mMediaPlayer.pause();
                     currPosition = mMediaPlayer.getCurrentPosition();
@@ -236,9 +196,6 @@ public class MainActivity extends AppCompatActivity {
                     mMediaPlayer.start();
                     btnPlay.setImageResource(android.R.drawable.ic_media_pause);
                 }
-            }else{
-                initMediaPlayer();
-                mMediaPlayer.start();
             }
         }
     };
@@ -258,29 +215,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void initPlayerBarTime(int duration){
-        playerBar.setMax(duration);
-        durationText = stringForTime(duration);
-        tvShowTime.setText(stringForTime(0) + "/" + durationText);
+    private void initPlayerBarTime(int mills){
+        playerBar.setMax(mills);
+        tvShowTime.setText(stringForTime(0) + "/" + stringForTime(mills));
     }
 
     private void intSurfaceViewSize(int videoWidth, int videoHeight){
-        RelativeLayout.LayoutParams sf_lp = (RelativeLayout.LayoutParams) mSurfaceView.getLayoutParams();
+        LayoutParams sf_lp = (LayoutParams) mSurfaceView.getLayoutParams();
         // 如果视频宽高超过父容器的宽高，则要进行缩放
-        float ratio = Math.max((float)videoWidth / (float) parent.getWidth(),
-                (float)videoHeight / (float) parent.getHeight());
+        float ratio = Math.max((float)videoWidth / (float) getWidth(), (float)videoHeight / (float) getHeight());
         sf_lp.width = (int) Math.ceil((float)videoWidth / ratio);
         sf_lp.height = (int) Math.ceil((float)videoHeight / ratio);
+        sf_lp.addRule(CENTER_VERTICAL);
         mSurfaceView.setLayoutParams(sf_lp);
     }
-
-    private void updateTime(){
-        String currTime = stringForTime(mMediaPlayer.getCurrentPosition());
-        tvShowTime.setText(currTime + "/" + durationText);
-        playerBar.setProgress(mMediaPlayer.getCurrentPosition());
-    }
-
-    private Thread updateTimeThread = new Thread(){
-
-    };
 }
