@@ -12,6 +12,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 import static android.view.View.generateViewId;
+import static android.widget.RelativeLayout.ALIGN_BOTTOM;
 import static android.widget.RelativeLayout.ALIGN_PARENT_BOTTOM;
 import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
@@ -35,9 +36,10 @@ public class VideoControllerView {
         RelativeLayout.LayoutParams vd_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 100);
         vd_lp.addRule(ALIGN_PARENT_BOTTOM);
+        vd_lp.bottomMargin = 10;
         videoController.setLayoutParams(vd_lp);
         videoController.setBackgroundColor(Color.LTGRAY);
-
+        videoController.getBackground().setAlpha(0);
         addBtnPlay();
         addBtnChangeOrientation();
         addTvShowTime();
@@ -48,6 +50,7 @@ public class VideoControllerView {
         btnPlay = new ImageButton(mContext);
         RelativeLayout.LayoutParams btp_lp = new RelativeLayout.LayoutParams(100, 100);
         btp_lp.addRule(ALIGN_PARENT_LEFT);
+        btp_lp.leftMargin = 50;
         btnPlay.setId(generateViewId());
         btnPlay.setLayoutParams(btp_lp);
         btnPlay.setPadding(0, 5, 0, 5);
@@ -74,6 +77,7 @@ public class VideoControllerView {
         btnChangeOrientation = new ImageButton(mContext);
         RelativeLayout.LayoutParams btc_lp = new RelativeLayout.LayoutParams(100, 100);
         btc_lp.addRule(ALIGN_PARENT_RIGHT);
+        btc_lp.rightMargin = 50;
         btnChangeOrientation.setId(generateViewId());
         btnChangeOrientation.setLayoutParams(btc_lp);
         btnChangeOrientation.setImageResource(android.R.drawable.ic_menu_always_landscape_portrait);
@@ -90,6 +94,7 @@ public class VideoControllerView {
         tv_lp.addRule(RelativeLayout.CENTER_VERTICAL);
         tv_lp.rightMargin = 10;
         tvShowTime.setId(generateViewId());
+        tvShowTime.setTextColor(Color.WHITE);
         tvShowTime.setLayoutParams(tv_lp);
         tvShowTime.setTextSize(12);
         tvShowTime.setText("00:00/00:00");
