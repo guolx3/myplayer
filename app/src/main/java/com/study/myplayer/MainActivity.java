@@ -49,12 +49,14 @@ import static android.widget.RelativeLayout.ALIGN_PARENT_BOTTOM;
 import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
 import static android.widget.RelativeLayout.BELOW;
+import static android.widget.RelativeLayout.CENTER_IN_PARENT;
 import static android.widget.RelativeLayout.LEFT_OF;
 import static android.widget.RelativeLayout.RIGHT_OF;
 
 public class MainActivity extends AppCompatActivity {
     private final String TAG = "MainActivity";
     private final int UPDATE_TIME = 1;
+
     private String videoPath;
 
     private RelativeLayout parent;
@@ -94,6 +96,7 @@ public class MainActivity extends AppCompatActivity {
 
         addAllView();
         setViewListener();
+        initMediaPlayer();
     }
 
     private void addAllView(){
@@ -103,9 +106,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void setViewListener(){
         btnPlay.setOnClickListener(btnPlayOnClickListener);
+        playerBar.setOnSeekBarChangeListener(seekBarChangeListener);
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     private void initMediaPlayer(){
         try{
             mMediaPlayer = new MediaPlayer();
@@ -119,7 +122,8 @@ public class MainActivity extends AppCompatActivity {
                     Log.i(TAG, "onPrepared");
                     initialized = true;
                     mMediaPlayer.setDisplay(mSurfaceView.getHolder());
-                    initPlayerBarTime(mMediaPlayer.getDuration());
+                    playerBar.setMax(mMediaPlayer.getDuration());
+                    initTvShowText(mMediaPlayer.getDuration());
                     intSurfaceViewSize(mMediaPlayer.getVideoWidth(), mMediaPlayer.getVideoHeight());
                 }
             });
@@ -166,9 +170,9 @@ public class MainActivity extends AppCompatActivity {
         parent.addView(rlController);
 
         addBtnPlay();
-        addPlayerBar();
         addBtnChangeOrientation();
         addTvShowTime();
+        addPlayerBar();
     }
 
     private void addBtnPlay(){
@@ -190,6 +194,8 @@ public class MainActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT);
         pb_lp.rightMargin = 10;
         pb_lp.addRule(RIGHT_OF, btnPlay.getId());
+        pb_lp.addRule(LEFT_OF, tvShowTime.getId());
+        pb_lp.addRule(RelativeLayout.CENTER_VERTICAL);
         playerBar.setId(generateViewId());
         playerBar.setLayoutParams(pb_lp);
         rlController.addView(playerBar);
@@ -212,6 +218,7 @@ public class MainActivity extends AppCompatActivity {
         RelativeLayout.LayoutParams tv_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         tv_lp.addRule(LEFT_OF, btnChangeOrientation.getId());
+        tv_lp.addRule(RelativeLayout.CENTER_VERTICAL);
         tv_lp.rightMargin = 10;
         tvShowTime.setId(generateViewId());
         tvShowTime.setLayoutParams(tv_lp);
@@ -224,22 +231,52 @@ public class MainActivity extends AppCompatActivity {
         @RequiresApi(api = Build.VERSION_CODES.N)
         @Override
         public void onClick(View v) {
-            Log.i(TAG, "onClick");
-            Toast.makeText(getApplication(), "btnPlay on click", Toast.LENGTH_LONG).show();
             if(initialized) {
                 if (mMediaPlayer.isPlaying()) {
+                    Log.i(TAG, "onClick: pause");
+                    Toast.makeText(getApplication(), "pause", Toast.LENGTH_SHORT).show();
                     mMediaPlayer.pause();
                     currPosition = mMediaPlayer.getCurrentPosition();
                     btnPlay.setImageResource(android.R.drawable.ic_media_play);
                 } else {
+                    Log.i(TAG, "onClick: play");
+                    Toast.makeText(getApplication(), "play", Toast.LENGTH_SHORT).show();
                     mMediaPlayer.seekTo(currPosition);
                     mMediaPlayer.start();
                     btnPlay.setImageResource(android.R.drawable.ic_media_pause);
+                    mHandler.sendEmptyMessage(UPDATE_TIME);
                 }
             }else{
+                Toast.makeText(getApplication(), "video is preparing", Toast.LENGTH_SHORT).show();
                 initMediaPlayer();
-                mMediaPlayer.start();
             }
+        }
+    };
+
+    private View.OnClickListener btnOrientationClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            if(orin)
+        }
+    }
+
+    private SeekBar.OnSeekBarChangeListener seekBarChangeListener = new SeekBar.OnSeekBarChangeListener() {
+        @Override
+        public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+            if(fromUser){
+                mMediaPlayer.seekTo(progress);
+                setCurrTimeForTvShow();
+            }
+        }
+
+        @Override
+        public void onStartTrackingTouch(SeekBar seekBar) {
+            mHandler.removeMessages(UPDATE_TIME);
+        }
+
+        @Override
+        public void onStopTrackingTouch(SeekBar seekBar) {
+            mHandler.sendEmptyMessage(UPDATE_TIME);
         }
     };
 
@@ -258,29 +295,48 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void initPlayerBarTime(int duration){
-        playerBar.setMax(duration);
+    private void initTvShowText(int duration){
         durationText = stringForTime(duration);
-        tvShowTime.setText(stringForTime(0) + "/" + durationText);
+        setCurrTimeForTvShow();
     }
 
+    private RelativeLayout.LayoutParams sf_port_lp;
+    private RelativeLayout.LayoutParams sf_lan_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT);
+
     private void intSurfaceViewSize(int videoWidth, int videoHeight){
-        RelativeLayout.LayoutParams sf_lp = (RelativeLayout.LayoutParams) mSurfaceView.getLayoutParams();
+        sf_port_lp = (RelativeLayout.LayoutParams) mSurfaceView.getLayoutParams();
         // 如果视频宽高超过父容器的宽高，则要进行缩放
         float ratio = Math.max((float)videoWidth / (float) parent.getWidth(),
                 (float)videoHeight / (float) parent.getHeight());
-        sf_lp.width = (int) Math.ceil((float)videoWidth / ratio);
-        sf_lp.height = (int) Math.ceil((float)videoHeight / ratio);
-        mSurfaceView.setLayoutParams(sf_lp);
+        sf_port_lp.width = (int) Math.ceil((float)videoWidth / ratio);
+        sf_port_lp.height = (int) Math.ceil((float)videoHeight / ratio);
+        mSurfaceView.setLayoutParams(sf_port_lp);
+    }
+
+    private void setCurrTimeForTvShow(){
+        String currTime = stringForTime(mMediaPlayer.getCurrentPosition());
+        tvShowTime.setText(currTime + "/" + durationText);
     }
 
     private void updateTime(){
-        String currTime = stringForTime(mMediaPlayer.getCurrentPosition());
-        tvShowTime.setText(currTime + "/" + durationText);
+        setCurrTimeForTvShow();
         playerBar.setProgress(mMediaPlayer.getCurrentPosition());
+
+        if(mMediaPlayer.isPlaying()){
+            mHandler.sendEmptyMessageDelayed(UPDATE_TIME, 500);
+        }
     }
 
-    private Thread updateTimeThread = new Thread(){
 
-    };
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
+            mSurfaceView.setLayoutParams(sf_port_lp);
+        }else if(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE){
+            mSurfaceView.setLayoutParams(sf_lan_lp);
+        }
+    }
 }
