@@ -1,17 +1,10 @@
 package com.study.myplayer;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
-import android.Manifest;
-import android.app.Activity;
-import android.content.Context;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.media.AudioManager;
@@ -20,124 +13,144 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.os.PersistableBundle;
-import android.util.AttributeSet;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.VideoView;
 
 import java.io.File;
-import java.io.IOException;
-import java.net.URL;
 import java.util.Formatter;
 
-import static android.view.Gravity.CENTER_VERTICAL;
-import static android.view.View.generateViewId;
-import static android.widget.RelativeLayout.ALIGN_PARENT_BOTTOM;
-import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
-import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
-import static android.widget.RelativeLayout.BELOW;
 import static android.widget.RelativeLayout.CENTER_IN_PARENT;
-import static android.widget.RelativeLayout.LEFT_OF;
-import static android.widget.RelativeLayout.RIGHT_OF;
 
 public class MainActivity extends AppCompatActivity {
     private final String TAG = "MainActivity";
     private final int UPDATE_TIME = 1;
+    private final int HIDE_CONTROLLER = 2;
 
-    private String videoPath;
+    private String videoPath = null;
 
     private RelativeLayout parent;
 
+    // video player
     private MediaPlayer mMediaPlayer;
     private int currPosition = 0;
     private boolean initialized = false;
-
     private SurfaceView mSurfaceView;
 
-    private RelativeLayout rlController;
+    // video controller
+    VideoControllerView videoControllerView;
     private ImageButton btnPlay;
     private ImageButton btnChangeOrientation;
     private SeekBar playerBar;
     private TextView tvShowTime;
-    private boolean isControllerShow = false;
+    private boolean isControllerShowing = false;
     private String durationText;
 
-    private Handler mHandler = new Handler(){
+    // volume controller
+    private LinearLayout volumeController;
+    private ImageView volumeIcon;
+    private ProgressBar volumeBar;
+
+    // menu
+    private final int SET_VIDEO_PATH = 7;
+    private final int PLAY_MODE = 8;
+    private final int PLAY_SPEED= 9;
+
+    private boolean isSystemUIShowing = true;
+    private boolean isLandscape = false;
+
+    private final Handler mHandler = new Handler(new Handler.Callback() {
+        //?? Callback interface you can use when instantiating a Handler to avoid having to implement your own subclass of Handler
+
         @Override
-        public void handleMessage(@NonNull Message msg) {
+        public boolean handleMessage(@NonNull Message msg) {
             switch (msg.what){
                 case UPDATE_TIME:
                     updateTime();
                     break;
+                case HIDE_CONTROLLER:
+                    hideController();
+                    break;
             }
+            return false;
         }
-    };
+    });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        parent = findViewById(R.id.parent);
-        parent.setBackgroundColor(Color.WHITE);
-
+        this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
+        initParentView();
         addAllView();
         setViewListener();
-        initMediaPlayer();
+    }
+
+    private void initParentView(){
+        parent = findViewById(R.id.parent);
+        parent.setBackgroundColor(Color.WHITE);
     }
 
     private void addAllView(){
         addSurfaceView();
-        addControllerView();
+        addVideoControllerView();
+        setViewListener();
+    }
+
+    private void addVideoControllerView(){
+        videoControllerView = new VideoControllerView(this);
+        parent.addView(videoControllerView.getRootView());
+        btnPlay = videoControllerView.getBtnPlay();
+        btnChangeOrientation = videoControllerView.getBtnChangeOrientation();
+        playerBar = videoControllerView.getPlayerBar();
+        tvShowTime = videoControllerView.getTvShowTime();
     }
 
     private void setViewListener(){
-        btnPlay.setOnClickListener(btnPlayOnClickListener);
-        playerBar.setOnSeekBarChangeListener(seekBarChangeListener);
+        videoControllerView.setBtnPlayOnClickListener(btnPlayOnClickListener);
+        videoControllerView.setBtnChangeOrientationOnClickListener(btnOrientationClickListener);
+        videoControllerView.setPlayerBarChangeListener(seekBarChangeListener);
     }
 
-    private void initMediaPlayer(){
-        try{
-            mMediaPlayer = new MediaPlayer();
-            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            mMediaPlayer.setDataSource(getResources().getAssets().openFd("test_1080_60.mp4"));
-            mMediaPlayer.setDisplay(mSurfaceView.getHolder());
-            mMediaPlayer.prepareAsync();
-            mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                @Override
-                public void onPrepared(MediaPlayer mp) {
-                    Log.i(TAG, "onPrepared");
-                    initialized = true;
-                    mMediaPlayer.setDisplay(mSurfaceView.getHolder());
-                    playerBar.setMax(mMediaPlayer.getDuration());
-                    initTvShowText(mMediaPlayer.getDuration());
-                    intSurfaceViewSize(mMediaPlayer.getVideoWidth(), mMediaPlayer.getVideoHeight());
-                }
-            });
-            initialized = true;
-        }catch (Exception e) {
-            e.printStackTrace();
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add(1, SET_VIDEO_PATH, 1, "输入视频地址");
+        menu.add(1, PLAY_MODE, 2, "播放模式");
+        menu.add(1, PLAY_SPEED, 3, "播放速度");
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        switch (item.getItemId()){
+            case SET_VIDEO_PATH:
+                break;
+            case PLAY_MODE:
+                break;
+            case PLAY_SPEED:
+                break;
         }
+        return super.onOptionsItemSelected(item);
     }
 
     private void addSurfaceView(){
         mSurfaceView = new SurfaceView(this);
         RelativeLayout.LayoutParams sf_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 600);
-        sf_lp.addRule(CENTER_VERTICAL);
+        sf_lp.addRule(CENTER_IN_PARENT);
         mSurfaceView.setLayoutParams(sf_lp);
         mSurfaceView.setId(View.generateViewId());
         parent.addView(mSurfaceView);
@@ -146,6 +159,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder holder) {
                 Log.i(TAG, "surfaceCreated");
+                if(!initialized){
+                    initMediaPlayer(holder);
+                }else{
+                    mMediaPlayer.setDisplay(holder);
+                }
             }
 
             @Override
@@ -160,73 +178,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void addControllerView(){
-        rlController = new RelativeLayout(this);
-        RelativeLayout.LayoutParams vd_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                100);
-        vd_lp.addRule(BELOW, mSurfaceView.getId());
-        rlController.setLayoutParams(vd_lp);
-        rlController.setBackgroundColor(Color.LTGRAY);
-        parent.addView(rlController);
-
-        addBtnPlay();
-        addBtnChangeOrientation();
-        addTvShowTime();
-        addPlayerBar();
-    }
-
-    private void addBtnPlay(){
-        btnPlay = new ImageButton(this);
-        RelativeLayout.LayoutParams btp_lp = new RelativeLayout.LayoutParams(100, 100);
-        btp_lp.addRule(ALIGN_PARENT_LEFT);
-        btnPlay.setId(generateViewId());
-        btnPlay.setLayoutParams(btp_lp);
-        btnPlay.setPadding(0, 5, 0, 5);
-        btnPlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        btnPlay.setImageResource(android.R.drawable.ic_media_play);
-        btnPlay.getBackground().setAlpha(0);
-        rlController.addView(btnPlay);
-    }
-
-    private void addPlayerBar(){
-        playerBar = new SeekBar(this);
-        RelativeLayout.LayoutParams pb_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.MATCH_PARENT);
-        pb_lp.rightMargin = 10;
-        pb_lp.addRule(RIGHT_OF, btnPlay.getId());
-        pb_lp.addRule(LEFT_OF, tvShowTime.getId());
-        pb_lp.addRule(RelativeLayout.CENTER_VERTICAL);
-        playerBar.setId(generateViewId());
-        playerBar.setLayoutParams(pb_lp);
-        rlController.addView(playerBar);
-    }
-
-    private void addBtnChangeOrientation(){
-        btnChangeOrientation = new ImageButton(this);
-        RelativeLayout.LayoutParams btc_lp = new RelativeLayout.LayoutParams(100, 100);
-        btc_lp.addRule(ALIGN_PARENT_RIGHT);
-        btnChangeOrientation.setId(generateViewId());
-        btnChangeOrientation.setLayoutParams(btc_lp);
-        btnChangeOrientation.setImageResource(android.R.drawable.ic_menu_always_landscape_portrait);
-        btnPlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        btnPlay.getBackground().setAlpha(0);
-        rlController.addView(btnChangeOrientation);
-    }
-
-    private void addTvShowTime(){
-        tvShowTime = new TextView(this);
-        RelativeLayout.LayoutParams tv_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        tv_lp.addRule(LEFT_OF, btnChangeOrientation.getId());
-        tv_lp.addRule(RelativeLayout.CENTER_VERTICAL);
-        tv_lp.rightMargin = 10;
-        tvShowTime.setId(generateViewId());
-        tvShowTime.setLayoutParams(tv_lp);
-        tvShowTime.setTextSize(12);
-        tvShowTime.setText(stringForTime(0) + "/" + stringForTime(0));
-        rlController.addView(tvShowTime);
-    }
-
     private View.OnClickListener btnPlayOnClickListener = new View.OnClickListener() {
         @RequiresApi(api = Build.VERSION_CODES.N)
         @Override
@@ -235,20 +186,15 @@ public class MainActivity extends AppCompatActivity {
                 if (mMediaPlayer.isPlaying()) {
                     Log.i(TAG, "onClick: pause");
                     Toast.makeText(getApplication(), "pause", Toast.LENGTH_SHORT).show();
-                    mMediaPlayer.pause();
-                    currPosition = mMediaPlayer.getCurrentPosition();
-                    btnPlay.setImageResource(android.R.drawable.ic_media_play);
+                    pause();
                 } else {
                     Log.i(TAG, "onClick: play");
                     Toast.makeText(getApplication(), "play", Toast.LENGTH_SHORT).show();
-                    mMediaPlayer.seekTo(currPosition);
-                    mMediaPlayer.start();
-                    btnPlay.setImageResource(android.R.drawable.ic_media_pause);
-                    mHandler.sendEmptyMessage(UPDATE_TIME);
+                    play();
                 }
             }else{
                 Toast.makeText(getApplication(), "video is preparing", Toast.LENGTH_SHORT).show();
-                initMediaPlayer();
+                initMediaPlayer(mSurfaceView.getHolder());
             }
         }
     };
@@ -256,29 +202,84 @@ public class MainActivity extends AppCompatActivity {
     private View.OnClickListener btnOrientationClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-            if(orin)
+            if(isLandscape){
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            }else{
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            }
         }
-    }
+    };
 
     private SeekBar.OnSeekBarChangeListener seekBarChangeListener = new SeekBar.OnSeekBarChangeListener() {
         @Override
         public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
             if(fromUser){
-                mMediaPlayer.seekTo(progress);
                 setCurrTimeForTvShow();
             }
         }
 
         @Override
         public void onStartTrackingTouch(SeekBar seekBar) {
+            pause();
             mHandler.removeMessages(UPDATE_TIME);
         }
 
         @Override
         public void onStopTrackingTouch(SeekBar seekBar) {
+            currPosition = seekBar.getProgress();
+            play();
             mHandler.sendEmptyMessage(UPDATE_TIME);
         }
     };
+
+    private void pause(){
+        mMediaPlayer.pause();
+        currPosition = mMediaPlayer.getCurrentPosition();
+        btnPlay.setImageResource(android.R.drawable.ic_media_play);
+    }
+
+    private void play(){
+        mMediaPlayer.seekTo(currPosition);
+        mMediaPlayer.start();
+        btnPlay.setImageResource(android.R.drawable.ic_media_pause);
+        mHandler.sendEmptyMessage(UPDATE_TIME);
+    }
+
+    private void initMediaPlayer(SurfaceHolder holder){
+        try{
+            mMediaPlayer = new MediaPlayer();
+            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            if(videoPath == null){
+                mMediaPlayer.setDataSource(getResources().getAssets().openFd("test_1080_60.mp4"));
+            }else{
+                mMediaPlayer.setDataSource(videoPath);
+            }
+            mMediaPlayer.setDisplay(mSurfaceView.getHolder());
+            mMediaPlayer.prepareAsync();
+            mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                @Override
+                public void onPrepared(MediaPlayer mp) {
+                    Log.i(TAG, "onPrepared");
+                    initialized = true;
+                    mMediaPlayer.setDisplay(mSurfaceView.getHolder());
+                    playerBar.setMax(mMediaPlayer.getDuration());
+                    initTvShowText(mMediaPlayer.getDuration());
+                    intSurfaceViewSize(mMediaPlayer.getVideoWidth(), mMediaPlayer.getVideoHeight());
+                    play();
+                }
+            });
+            mMediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                @Override
+                public void onCompletion(MediaPlayer mp) {
+                    mMediaPlayer.seekTo(0);
+                    pause();
+                }
+            });
+            initialized = true;
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     private String stringForTime(int mills){
         int totalSeconds = mills / 1000;
@@ -329,14 +330,107 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         if(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
+            showSystemUI();
+            showController();
+            mHandler.removeMessages(HIDE_CONTROLLER);
             mSurfaceView.setLayoutParams(sf_port_lp);
+            isLandscape = false;
         }else if(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE){
+            hideSystemUI();
+
+            hideController();
             mSurfaceView.setLayoutParams(sf_lan_lp);
+            isLandscape = true;
         }
+    }
+
+    private void hideController(){
+        videoControllerView.setVisibility(View.GONE);
+        isControllerShowing = false;
+    }
+
+    private void showController(){
+        videoControllerView.setVisibility(View.VISIBLE);
+        isControllerShowing = true;
+    }
+
+    private void setVideoPath(String str){
+        File file = new File(str);
+        if(!file.exists()){
+            Log.d(TAG, "initMediaPlayer: the file: " + videoPath + " does not exits!");
+            Toast.makeText(getApplicationContext(), "the file: " + videoPath + " does not exits!",
+                    Toast.LENGTH_LONG).show();
+        }else{
+            videoPath = str;
+        }
+    }
+
+    private boolean isVerticalOperator = false;
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        switch (event.getAction()){
+            case MotionEvent.ACTION_DOWN:
+                if(isSystemUIShowing){
+                    hideSystemUI();
+                    isSystemUIShowing = false;
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+                if(isControllerShowing){
+                    hideController();
+                    mHandler.removeMessages(HIDE_CONTROLLER);
+                }else{
+                    if(!isVerticalOperator){
+                        showController();
+                        mHandler.sendEmptyMessageDelayed(HIDE_CONTROLLER, 5000);
+                    }
+                }
+                break;
+        }
+        return true;
+    }
+
+    private void hideSystemUI() {
+        // Enables regular immersive mode.
+        // For "lean back" mode, remove SYSTEM_UI_FLAG_IMMERSIVE.
+        // Or for "sticky immersive," replace it with SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE
+                        // Set the content to appear under the system bars so that the
+                        // content doesn't resize when the system bars hide and show.
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        // Hide the nav bar and status bar
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN);
+    }
+
+    // Shows the system bars by removing all the flags
+    // except for the ones that make the content appear under the system bars.
+    private void showSystemUI() {
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        pause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        mHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 }
