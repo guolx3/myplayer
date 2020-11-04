@@ -24,6 +24,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PersistableBundle;
+import android.service.controls.Control;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -112,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
 
     // handler
     private final int UPDATE_TIME = 1;
-    private final int HIDE_CONTROLLER = 2;
+//    private final int HIDE_CONTROLLER = 2;
     private final Handler mHandler = new Handler(new Handler.Callback() {
         //?? Callback interface you can use when instantiating a Handler to avoid having to implement your own subclass of Handler
 
@@ -122,9 +123,9 @@ public class MainActivity extends AppCompatActivity {
                 case UPDATE_TIME:
                     updateTime();
                     break;
-                case HIDE_CONTROLLER:
-                    hideVideoController();
-                    break;
+//                case HIDE_CONTROLLER:
+//                    hideVideoController();
+//                    break;
             }
             return false;
         }
@@ -496,7 +497,6 @@ public class MainActivity extends AppCompatActivity {
         if(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
             showSystemUI();
             showVideoController();
-            mHandler.removeMessages(HIDE_CONTROLLER);
             parent.setLayoutParams(port_lp);
             isLandscape = false;
         }else if(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE){
@@ -530,6 +530,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onTouchEvent(MotionEvent event) {
         switch (event.getAction()){
             case MotionEvent.ACTION_DOWN:
+                Log.i(TAG, "onTouchEvent: ACTION_DOWN");
                 if(isLandscape){
                     hideSystemUI();
                 }
@@ -537,13 +538,19 @@ public class MainActivity extends AppCompatActivity {
                 startY = event.getY();
                 break;
             case MotionEvent.ACTION_MOVE:
+                Log.i(TAG, "onTouchEvent: ACTION_MOVE");
                 float endX = event.getX();
                 float endY = event.getY();
                 determineOperateType(startX, startY, endX, endY);
                 if(operateType[OPERATE_ORIENTATION] == HORIZONTAL_OPERATE){
                     if(!lockVerticalOperator){
                         lockHorizontalOperator = true;
+                        if(!isVideoControllerShowing){
+                            showVideoController();
+                        }
                         playbackOrForward(endX - startX);
+                        startX = endX;
+                        startY = endY;
                     }
                 }else if(operateType[OPERATE_ORIENTATION] == VERTICAL_OPERATE){
                     if(!lockHorizontalOperator){
@@ -554,18 +561,36 @@ public class MainActivity extends AppCompatActivity {
                             }
                             changeVolume(endY - startY);
                         }
+                        startX = endX;
+                        startY = endY;
                     }
                 }
             case MotionEvent.ACTION_UP:
-                if(isVideoControllerShowing){
-                    hideVideoController();
-                    mHandler.removeMessages(HIDE_CONTROLLER);
-                }else{
-                    if(!lockVerticalOperator){
+                Log.i(TAG, "onTouchEvent: ACTION_UP");
+
+                if(!lockVerticalOperator && !lockHorizontalOperator){
+                    // 普通点击事件
+                    if(isVideoControllerShowing){
+                        hideVideoController();
+                    }else{
                         showVideoController();
-                        mHandler.sendEmptyMessageDelayed(HIDE_CONTROLLER, 5000);
                     }
                 }
+
+//                if(lockHorizontalOperator){
+//                    // 手势拖动进度条时不要隐藏controller
+////                    mHandler.removeMessages(HIDE_CONTROLLER);
+//                }else if(!lockVerticalOperator){
+//                    // 普通点击事件
+//                    if(isVideoControllerShowing){
+//                        hideVideoController();
+//                        mHandler.removeMessages(HIDE_CONTROLLER);
+//                    }else{
+//                        showVideoController();
+//                        mHandler.sendEmptyMessageDelayed(HIDE_CONTROLLER, 5000);
+//                    }
+//                }
+
                 if(isVolumeControllerShowing){
                     hideVolumeController();
                 }
@@ -577,7 +602,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playbackOrForward(float range){
-
+        currPosition = mMediaPlayer.getCurrentPosition();
+        int duration = mMediaPlayer.getDuration();
+        int targetPosition;
+        if(range > 0){
+            targetPosition = Math.min(currPosition + 1000, duration);
+        }else{
+            targetPosition = Math.max(currPosition - 1000, 0);
+        }
+        playerBar.setProgress(targetPosition);
+        mMediaPlayer.seekTo(targetPosition);
+        currPosition = targetPosition;
     }
 
     private void changeVolume(float range){
@@ -589,11 +624,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void hideVideoController(){
+        Log.i(TAG, "hideVideoController");
         videoControllerView.setVisibility(View.GONE);
         isVideoControllerShowing = false;
     }
 
     private void showVideoController(){
+        Log.i(TAG, "showVideoController");
         videoControllerView.setVisibility(View.VISIBLE);
         isVideoControllerShowing = true;
     }
