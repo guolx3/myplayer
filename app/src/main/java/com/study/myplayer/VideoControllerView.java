@@ -2,7 +2,6 @@ package com.study.myplayer;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.opengl.Visibility;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
@@ -10,9 +9,9 @@ import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.VideoView;
 
 import static android.view.View.generateViewId;
-import static android.widget.RelativeLayout.ALIGN_BOTTOM;
 import static android.widget.RelativeLayout.ALIGN_PARENT_BOTTOM;
 import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
@@ -36,7 +35,7 @@ public class VideoControllerView {
         RelativeLayout.LayoutParams vd_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 100);
         vd_lp.addRule(ALIGN_PARENT_BOTTOM);
-        vd_lp.bottomMargin = 10;
+        vd_lp.bottomMargin = 20;
         videoController.setLayoutParams(vd_lp);
         videoController.setBackgroundColor(Color.LTGRAY);
         videoController.getBackground().setAlpha(0);
@@ -48,15 +47,16 @@ public class VideoControllerView {
 
     private void addBtnPlay(){
         btnPlay = new ImageButton(mContext);
-        RelativeLayout.LayoutParams btp_lp = new RelativeLayout.LayoutParams(60, 100);
+        RelativeLayout.LayoutParams btp_lp = new RelativeLayout.LayoutParams(100, 100);
         btp_lp.addRule(ALIGN_PARENT_LEFT);
         btp_lp.addRule(RelativeLayout.CENTER_VERTICAL);
         btp_lp.leftMargin = 50;
         btnPlay.setId(generateViewId());
         btnPlay.setLayoutParams(btp_lp);
         btnPlay.setPadding(0, 5, 0, 5);
-        btnPlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        btnPlay.setScaleType(ImageView.ScaleType.CENTER);
         btnPlay.setImageResource(android.R.drawable.ic_media_play);
+//        btnPlay.setImageResource(R.mipmap.play);
         btnPlay.getBackground().setAlpha(0);
         videoController.addView(btnPlay);
     }
@@ -76,15 +76,16 @@ public class VideoControllerView {
 
     private void addBtnChangeOrientation(){
         btnChangeOrientation = new ImageButton(mContext);
-        RelativeLayout.LayoutParams btc_lp = new RelativeLayout.LayoutParams(60, 60);
+        RelativeLayout.LayoutParams btc_lp = new RelativeLayout.LayoutParams(100, 100);
         btc_lp.addRule(ALIGN_PARENT_RIGHT);
         btc_lp.addRule(RelativeLayout.CENTER_VERTICAL);
         btc_lp.rightMargin = 50;
         btnChangeOrientation.setId(generateViewId());
         btnChangeOrientation.setLayoutParams(btc_lp);
-        btnChangeOrientation.setImageResource(android.R.drawable.gallery_thumb);
-        btnPlay.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        btnPlay.getBackground().setAlpha(0);
+        btnChangeOrientation.setImageResource(android.R.drawable.ic_menu_always_landscape_portrait);
+//        btnChangeOrientation.setImageResource(R.mipmap.fullscreen);
+        btnChangeOrientation.setScaleType(ImageView.ScaleType.CENTER);
+        btnChangeOrientation.getBackground().setAlpha(0);
         videoController.addView(btnChangeOrientation);
     }
 

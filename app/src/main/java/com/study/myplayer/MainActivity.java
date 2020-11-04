@@ -23,6 +23,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.os.PersistableBundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -44,6 +45,7 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.util.Formatter;
+import java.util.regex.Pattern;
 
 import static android.widget.RelativeLayout.ALIGN_PARENT_TOP;
 import static android.widget.RelativeLayout.CENTER_IN_PARENT;
@@ -52,13 +54,14 @@ public class MainActivity extends AppCompatActivity {
     private final String TAG = "MainActivity";
 
     private String videoPath = null;
+
     private RelativeLayout parent;
 
     // video player
     private MediaPlayer mMediaPlayer;
+    private SurfaceView mSurfaceView;
     private int currPosition = 0;
     private boolean initialized = false;
-    private SurfaceView mSurfaceView;
 
     // video controller
     VideoControllerView videoControllerView;
@@ -77,6 +80,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean isVolumeControllerShowing = false;
     private int currVolume = 0;
 
+    // brightness controller
+
     // menu
     private final int SET_VIDEO_PATH = 7;
     private final int SET_PLAY_MODE = 8;
@@ -90,8 +95,6 @@ public class MainActivity extends AppCompatActivity {
             "0.5", "1.0", "1.5", "2.0"
     };
 
-    private boolean isLandscape = false;
-
     // operator
     private final int VERTICAL_OPERATE = 3;
     private final int HORIZONTAL_OPERATE = 4;
@@ -104,6 +107,8 @@ public class MainActivity extends AppCompatActivity {
     private float startY = 0f;
     private boolean lockVerticalOperator = false;
     private boolean lockHorizontalOperator = false;
+
+    private boolean isLandscape = false;
 
     // handler
     private final int UPDATE_TIME = 1;
@@ -129,8 +134,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if(savedInstanceState != null){
+            currPosition = savedInstanceState.getInt("currPosition");
+        }
+
         setContentView(R.layout.activity_main);
+
         this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
+
         initParentView();
         addAllView();
         setViewListener();
@@ -145,11 +156,42 @@ public class MainActivity extends AppCompatActivity {
     private void addAllView(){
         addSurfaceView();
         addVideoControllerView();
-        addVolumeControllerVIew();
+//        addVolumeControllerVIew();
     }
 
-    private void getManagers(){
-        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+    //
+    private void addSurfaceView(){
+        mSurfaceView = new SurfaceView(this);
+        RelativeLayout.LayoutParams sf_lp = new RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT);
+        sf_lp.addRule(ALIGN_PARENT_TOP);
+        mSurfaceView.setLayoutParams(sf_lp);
+        mSurfaceView.setId(View.generateViewId());
+        parent.addView(mSurfaceView);
+        mSurfaceView.requestFocus();
+        mSurfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                Log.i(TAG, "surfaceCreated");
+                if(!initialized){
+                    initMediaPlayer(holder);
+                }else{
+                    mMediaPlayer.setDisplay(holder);
+                    play();
+                }
+            }
+
+            @Override
+            public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
+                Log.i(TAG, "surfaceChanged");
+            }
+
+            @Override
+            public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+                pause();
+                Log.i(TAG, "surfaceDestroyed");
+            }
+        });
     }
 
     private void addVideoControllerView(){
@@ -186,151 +228,14 @@ public class MainActivity extends AppCompatActivity {
         volumeController.addView(volumeBar, 1);
     }
 
+    private void getManagers(){
+        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+    }
+
     private void setViewListener(){
         videoControllerView.setBtnPlayOnClickListener(btnPlayOnClickListener);
         videoControllerView.setBtnChangeOrientationOnClickListener(btnOrientationClickListener);
         videoControllerView.setPlayerBarChangeListener(playerBarChangeListener);
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(1, SET_VIDEO_PATH, 1, "输入视频地址");
-        menu.add(1, SET_PLAY_MODE, 2, "播放模式");
-        menu.add(1, SET_PLAY_SPEED, 3, "播放速度");
-        return super.onCreateOptionsMenu(menu);
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        switch (item.getItemId()){
-            case SET_VIDEO_PATH:
-                setVideoPathItemOnClick();
-                break;
-            case SET_PLAY_MODE:
-                setPlayModeItemOnClick();
-                break;
-            case SET_PLAY_SPEED:
-                setPlaySpeedItemOnClick();
-                break;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
-    private void setVideoPathItemOnClick(){
-        verifyPermissions();
-        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
-        final View view = LayoutInflater.from(getBaseContext()).inflate(R.layout.menu_item_2, null,
-                false);
-        AlertDialog setVideoPathDialog = dialogBuilder
-                .setTitle("输入视频地址")
-                .setView(view)
-                .setNegativeButton("取消", null)
-                .setPositiveButton("确认", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        EditText et = view.findViewById(R.id.et_video_path);
-                        String path = et.getText().toString().trim();
-                        setVideoPath(path);
-                        releaseMediaPlayer();
-                        mSurfaceView.setVisibility(View.GONE);
-                        mSurfaceView.setVisibility(View.VISIBLE);
-                    }
-                }).create();
-        setVideoPathDialog.show();
-    }
-
-    private void setVideoPath(String str){
-        File file = new File(str);
-        if(!file.exists()){
-            Log.d(TAG, "setVideoPath: the file: " + videoPath + " does not exits!");
-            Toast.makeText(getApplicationContext(), "the file: " + videoPath + " does not exits!",
-                    Toast.LENGTH_LONG).show();
-        }else{
-            videoPath = str;
-        }
-    }
-
-    private int selectPlayMode;
-    private void setPlayModeItemOnClick(){
-        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
-        AlertDialog selectPlayModeDialog = dialogBuilder
-                .setTitle("选择播放模式")
-                .setSingleChoiceItems(playModes, currPlayMode, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        selectPlayMode = which;
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        currPlayMode = selectPlayMode;
-                        if(currPlayMode == 0){
-                            Toast.makeText(getApplicationContext(), "播完暂停", Toast.LENGTH_SHORT).show();
-                            mMediaPlayer.setLooping(false);
-                        }else if(currPlayMode == 1){
-                            Toast.makeText(getApplicationContext(), "循环播放", Toast.LENGTH_SHORT).show();
-                            mMediaPlayer.setLooping(true);
-                        }
-                    }
-                }).create();
-        selectPlayModeDialog.show();
-    }
-
-    private void setPlaySpeedItemOnClick(){
-        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
-        AlertDialog selectPlaySpeedDialog = dialogBuilder
-                .setTitle("选择播放速度")
-                .setItems(playSpeeds, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        currPlaySpeedIndex = which;
-                        Toast.makeText(getApplicationContext(), "设置播放倍速为" +
-                                playSpeeds[currPlaySpeedIndex], Toast.LENGTH_SHORT).show();
-                        Float playSpeed = Float.parseFloat(playSpeeds[currPlaySpeedIndex]);
-                        setPlayerSpeed(playSpeed);
-                    }
-                }).create();
-        selectPlaySpeedDialog.show();
-    }
-
-    private void setPlayerSpeed(Float speed){
-        PlaybackParams playbackParams = mMediaPlayer.getPlaybackParams();
-        playbackParams .setSpeed(speed);
-        mMediaPlayer.setPlaybackParams(playbackParams);
-    }
-
-    private void addSurfaceView(){
-        mSurfaceView = new SurfaceView(this);
-        RelativeLayout.LayoutParams sf_lp = new RelativeLayout.LayoutParams(
-                RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT);
-        sf_lp.addRule(ALIGN_PARENT_TOP);
-        mSurfaceView.setLayoutParams(sf_lp);
-        mSurfaceView.setId(View.generateViewId());
-        parent.addView(mSurfaceView);
-        mSurfaceView.requestFocus();
-        mSurfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(@NonNull SurfaceHolder holder) {
-                Log.i(TAG, "surfaceCreated");
-                if(!initialized){
-                    initMediaPlayer(holder);
-                }else{
-                    mMediaPlayer.setDisplay(holder);
-                }
-            }
-
-            @Override
-            public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-                Log.i(TAG, "surfaceChanged");
-            }
-
-            @Override
-            public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
-                Log.i(TAG, "surfaceDestroyed");
-            }
-        });
     }
 
     private View.OnClickListener btnPlayOnClickListener = new View.OnClickListener() {
@@ -387,20 +292,127 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add(1, SET_VIDEO_PATH, 1, "输入视频地址");
+        menu.add(1, SET_PLAY_MODE, 2, "播放模式");
+        menu.add(1, SET_PLAY_SPEED, 3, "播放速度");
+        return super.onCreateOptionsMenu(menu);
+    }
+
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        switch (item.getItemId()){
+            case SET_VIDEO_PATH:
+                setVideoPathItemOnClick();
+                break;
+            case SET_PLAY_MODE:
+                setPlayModeItemOnClick();
+                break;
+            case SET_PLAY_SPEED:
+                setPlaySpeedItemOnClick();
+                break;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void setVideoPathItemOnClick(){
+        verifyPermissions();
+        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
+        final View view = LayoutInflater.from(getBaseContext()).inflate(R.layout.menu_item_2, null,
+                false);
+        AlertDialog setVideoPathDialog = dialogBuilder
+                .setTitle("输入视频地址")
+                .setView(view)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        EditText et = view.findViewById(R.id.et_video_path);
+                        String path = et.getText().toString().trim();
+                        if(isPathValid(path)){
+                            videoPath = path;
+                            releaseMediaPlayer();
+                            mSurfaceView.setVisibility(View.GONE);
+                            mSurfaceView.setVisibility(View.VISIBLE);
+                        }else{
+                            Log.d(TAG, "setVideoPath: the path" + path + "is invalid, please check");
+                            Toast.makeText(getApplicationContext(), "the path" + path + "is invalid, please check",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    }
+                }).create();
+        setVideoPathDialog.show();
+    }
+
+    private int selectPlayMode;
+    private void setPlayModeItemOnClick(){
+        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
+        AlertDialog selectPlayModeDialog = dialogBuilder
+                .setTitle("选择播放模式")
+                .setSingleChoiceItems(playModes, currPlayMode, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        selectPlayMode = which;
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        currPlayMode = selectPlayMode;
+                        if(currPlayMode == 0){
+                            Toast.makeText(getApplicationContext(), "播完暂停", Toast.LENGTH_SHORT).show();
+                            mMediaPlayer.setLooping(false);
+                        }else if(currPlayMode == 1){
+                            Toast.makeText(getApplicationContext(), "循环播放", Toast.LENGTH_SHORT).show();
+                            mMediaPlayer.setLooping(true);
+                        }
+                    }
+                }).create();
+        selectPlayModeDialog.show();
+    }
+
+    private void setPlaySpeedItemOnClick(){
+        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
+        AlertDialog selectPlaySpeedDialog = dialogBuilder
+                .setTitle("选择播放速度")
+                .setItems(playSpeeds, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        currPlaySpeedIndex = which;
+                        Toast.makeText(getApplicationContext(), "设置播放倍速为" +
+                                playSpeeds[currPlaySpeedIndex], Toast.LENGTH_SHORT).show();
+                        Float playSpeed = Float.parseFloat(playSpeeds[currPlaySpeedIndex]);
+                        setPlayerSpeed(playSpeed);
+                    }
+                }).create();
+        selectPlaySpeedDialog.show();
+    }
+
+    private void setPlayerSpeed(Float speed){
+        PlaybackParams playbackParams = mMediaPlayer.getPlaybackParams();
+        playbackParams .setSpeed(speed);
+        mMediaPlayer.setPlaybackParams(playbackParams);
+    }
+
     private void pause(){
         mMediaPlayer.pause();
         currPosition = mMediaPlayer.getCurrentPosition();
         btnPlay.setImageResource(android.R.drawable.ic_media_play);
+//        btnPlay.setImageResource(R.mipmap.play);
     }
 
     private void play(){
         mMediaPlayer.seekTo(currPosition);
         mMediaPlayer.start();
         btnPlay.setImageResource(android.R.drawable.ic_media_pause);
+//        btnPlay.setImageResource(R.mipmap.pause);
         mHandler.sendEmptyMessage(UPDATE_TIME);
     }
 
-    private void initMediaPlayer(SurfaceHolder holder){
+    private void initMediaPlayer(final SurfaceHolder holder){
         try{
             mMediaPlayer = new MediaPlayer();
             mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
@@ -409,17 +421,17 @@ public class MainActivity extends AppCompatActivity {
             }else{
                 mMediaPlayer.setDataSource(videoPath);
             }
-            mMediaPlayer.setDisplay(mSurfaceView.getHolder());
+            mMediaPlayer.setDisplay(holder);
             mMediaPlayer.prepareAsync();
             mMediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
                     Log.i(TAG, "onPrepared");
                     initialized = true;
-                    mMediaPlayer.setDisplay(mSurfaceView.getHolder());
                     playerBar.setMax(mMediaPlayer.getDuration());
                     initTvShowText(mMediaPlayer.getDuration());
                     initParentPortLayout(mMediaPlayer.getVideoWidth(), mMediaPlayer.getVideoHeight());
+                    mMediaPlayer.seekTo(currPosition);
                     play();
                 }
             });
@@ -440,24 +452,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private String stringForTime(int mills){
-        int totalSeconds = mills / 1000;
-        int seconds = totalSeconds % 60;
-        int minutes = totalSeconds / 60 % 60;
-        int hours = totalSeconds / 3600;
-
-        Formatter fm = new Formatter();
-
-        if (hours > 0){
-            return fm.format("%d:%02d:%02d", hours, minutes, seconds).toString();
-        }else{
-            return fm.format("%02d:%02d", minutes, seconds).toString();
-        }
-    }
-
     private void initTvShowText(int duration){
         durationText = stringForTime(duration);
         setCurrTimeForTvShow();
+    }
+
+    private void setCurrTimeForTvShow(){
+        String currTime = stringForTime(mMediaPlayer.getCurrentPosition());
+        tvShowTime.setText(currTime + "/" + durationText);
+    }
+
+    private void updateTime(){
+        setCurrTimeForTvShow();
+        playerBar.setProgress(mMediaPlayer.getCurrentPosition());
+
+        if(mMediaPlayer.isPlaying()){
+            mHandler.sendEmptyMessageDelayed(UPDATE_TIME, 500);
+        }
     }
 
     private ConstraintLayout.LayoutParams port_lp;
@@ -512,40 +523,6 @@ public class MainActivity extends AppCompatActivity {
             operateType[OPERATE_AREA] = LEFT_AREA_OPERATE;
         }else{
             operateType[OPERATE_AREA] = RIGHT_AREA_OPERATE;
-        }
-    }
-
-    private void hideVideoController(){
-        videoControllerView.setVisibility(View.GONE);
-        isVideoControllerShowing = false;
-    }
-
-    private void showVideoController(){
-        videoControllerView.setVisibility(View.VISIBLE);
-        isVideoControllerShowing = true;
-    }
-
-    private void hideVolumeController(){
-        volumeController.setVisibility(View.GONE);
-        isVolumeControllerShowing = false;
-    }
-
-    private void showVolumeController(){
-        volumeController.setVisibility(View.VISIBLE);
-        isVolumeControllerShowing = true;
-    }
-
-    private void setCurrTimeForTvShow(){
-        String currTime = stringForTime(mMediaPlayer.getCurrentPosition());
-        tvShowTime.setText(currTime + "/" + durationText);
-    }
-
-    private void updateTime(){
-        setCurrTimeForTvShow();
-        playerBar.setProgress(mMediaPlayer.getCurrentPosition());
-
-        if(mMediaPlayer.isPlaying()){
-            mHandler.sendEmptyMessageDelayed(UPDATE_TIME, 500);
         }
     }
 
@@ -611,6 +588,26 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void hideVideoController(){
+        videoControllerView.setVisibility(View.GONE);
+        isVideoControllerShowing = false;
+    }
+
+    private void showVideoController(){
+        videoControllerView.setVisibility(View.VISIBLE);
+        isVideoControllerShowing = true;
+    }
+
+    private void hideVolumeController(){
+        volumeController.setVisibility(View.GONE);
+        isVolumeControllerShowing = false;
+    }
+
+    private void showVolumeController(){
+        volumeController.setVisibility(View.VISIBLE);
+        isVolumeControllerShowing = true;
+    }
+
     private void hideSystemUI() {
         // Enables regular immersive mode.
         // For "lean back" mode, remove SYSTEM_UI_FLAG_IMMERSIVE.
@@ -647,24 +644,55 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void releaseMediaPlayer(){
-        mMediaPlayer.seekTo(0);
+        Log.d(TAG, "releaseMediaPlayer");
         mMediaPlayer.pause();
         mMediaPlayer.release();
+        mMediaPlayer = null;
         currPosition = 0;
         initialized = false;
     }
 
+    private String stringForTime(int mills){
+        int totalSeconds = mills / 1000;
+        int seconds = totalSeconds % 60;
+        int minutes = totalSeconds / 60 % 60;
+        int hours = totalSeconds / 3600;
+
+        Formatter fm = new Formatter();
+
+        if (hours > 0){
+            return fm.format("%d:%02d:%02d", hours, minutes, seconds).toString();
+        }else{
+            return fm.format("%02d:%02d", minutes, seconds).toString();
+        }
+    }
+
+    private boolean isPathValid(String path){
+        String regex = "^(http|https)://.*$";
+        if(Pattern.matches(regex, path)){
+            return true;
+        }else{
+            File file = new File(path);
+            return file.exists();
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putInt("currPosition", mMediaPlayer.getCurrentPosition());
+        super.onSaveInstanceState(outState);
+    }
+
     @Override
     protected void onStop() {
+        pause();
         super.onStop();
-        if(mMediaPlayer != null){
-            pause();
-        }
     }
 
     @Override
     protected void onDestroy() {
         mHandler.removeCallbacksAndMessages(null);
+        releaseMediaPlayer();
         super.onDestroy();
     }
 }
