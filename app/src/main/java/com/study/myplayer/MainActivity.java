@@ -183,7 +183,8 @@ public class MainActivity extends AppCompatActivity {
                         String path = et.getText().toString().trim();
                         setVideoPath(path);
                         releaseMediaPlayer();
-                        initMediaPlayer(mSurfaceView.getHolder());
+                        mSurfaceView.setVisibility(View.GONE);
+                        mSurfaceView.setVisibility(View.VISIBLE);
                     }
                 }).create();
         setVideoPathDialog.show();
