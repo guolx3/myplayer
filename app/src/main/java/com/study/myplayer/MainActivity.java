@@ -9,6 +9,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -30,6 +31,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -44,20 +46,12 @@ import java.io.File;
 import java.util.Formatter;
 
 import static android.widget.RelativeLayout.ALIGN_PARENT_TOP;
+import static android.widget.RelativeLayout.CENTER_IN_PARENT;
 
 public class MainActivity extends AppCompatActivity {
     private final String TAG = "MainActivity";
-    private final int UPDATE_TIME = 1;
-    private final int HIDE_CONTROLLER = 2;
-    private final String[] playModes = new String[]{
-            "播完暂停", "循环播放"
-    };
-    private final String[] playSpeeds = new String[]{
-            "0.5", "1.0", "1.5", "2.0"
-    };
 
     private String videoPath = null;
-
     private RelativeLayout parent;
 
     // video player
@@ -72,13 +66,16 @@ public class MainActivity extends AppCompatActivity {
     private ImageButton btnChangeOrientation;
     private SeekBar playerBar;
     private TextView tvShowTime;
-    private boolean isControllerShowing = false;
+    private boolean isVideoControllerShowing = true;
     private String durationText = null;
 
     // volume controller
+    private AudioManager mAudioManager;
     private LinearLayout volumeController;
     private ImageView volumeIcon;
     private ProgressBar volumeBar;
+    private boolean isVolumeControllerShowing = false;
+    private int currVolume = 0;
 
     // menu
     private final int SET_VIDEO_PATH = 7;
@@ -86,10 +83,31 @@ public class MainActivity extends AppCompatActivity {
     private final int SET_PLAY_SPEED = 9;
     private int currPlayMode = 0;
     private int currPlaySpeedIndex = 1;
+    private final String[] playModes = new String[]{
+            "播完暂停", "循环播放"
+    };
+    private final String[] playSpeeds = new String[]{
+            "0.5", "1.0", "1.5", "2.0"
+    };
 
-    private boolean isSystemUIShowing = true;
     private boolean isLandscape = false;
 
+    // operator
+    private final int VERTICAL_OPERATE = 3;
+    private final int HORIZONTAL_OPERATE = 4;
+    private final int LEFT_AREA_OPERATE = 5;
+    private final int RIGHT_AREA_OPERATE = 6;
+    private final int OPERATE_ORIENTATION = 0;
+    private final int OPERATE_AREA = 1;
+    private int[] operateType;
+    private float startX = 0f;
+    private float startY = 0f;
+    private boolean lockVerticalOperator = false;
+    private boolean lockHorizontalOperator = false;
+
+    // handler
+    private final int UPDATE_TIME = 1;
+    private final int HIDE_CONTROLLER = 2;
     private final Handler mHandler = new Handler(new Handler.Callback() {
         //?? Callback interface you can use when instantiating a Handler to avoid having to implement your own subclass of Handler
 
@@ -100,12 +118,13 @@ public class MainActivity extends AppCompatActivity {
                     updateTime();
                     break;
                 case HIDE_CONTROLLER:
-                    hideController();
+                    hideVideoController();
                     break;
             }
             return false;
         }
     });
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -115,6 +134,7 @@ public class MainActivity extends AppCompatActivity {
         initParentView();
         addAllView();
         setViewListener();
+        getManagers();
     }
 
     private void initParentView(){
@@ -125,7 +145,11 @@ public class MainActivity extends AppCompatActivity {
     private void addAllView(){
         addSurfaceView();
         addVideoControllerView();
-        setViewListener();
+        addVolumeControllerVIew();
+    }
+
+    private void getManagers(){
+        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
     }
 
     private void addVideoControllerView(){
@@ -137,10 +161,35 @@ public class MainActivity extends AppCompatActivity {
         tvShowTime = videoControllerView.getTvShowTime();
     }
 
+    private void addVolumeControllerVIew(){
+        volumeController = new LinearLayout(this);
+        RelativeLayout.LayoutParams vl_lp = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        vl_lp.addRule(CENTER_IN_PARENT);
+        volumeController.setLayoutParams(vl_lp);
+        volumeController.setOrientation(LinearLayout.HORIZONTAL);
+        volumeController.setBackgroundColor(Color.GRAY);
+        volumeController.getBackground().setAlpha(10);
+        parent.addView(volumeController);
+        volumeController.setVisibility(View.GONE);
+
+        volumeIcon = new ImageView(this);
+        LinearLayout.LayoutParams vi_lp = new LinearLayout.LayoutParams(50, 50);
+        volumeIcon.setLayoutParams(vi_lp);
+        volumeIcon.setImageResource(android.R.drawable.ic_lock_silent_mode_off);
+        volumeController.addView(volumeIcon, 0);
+
+        volumeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        LinearLayout.LayoutParams vb_lp = new LinearLayout.LayoutParams(150, 50);
+        volumeBar.setLayoutParams(vb_lp);
+        volumeBar.setMax(100); //0~100
+        volumeController.addView(volumeBar, 1);
+    }
+
     private void setViewListener(){
         videoControllerView.setBtnPlayOnClickListener(btnPlayOnClickListener);
         videoControllerView.setBtnChangeOrientationOnClickListener(btnOrientationClickListener);
-        videoControllerView.setPlayerBarChangeListener(seekBarChangeListener);
+        videoControllerView.setPlayerBarChangeListener(playerBarChangeListener);
     }
 
     @Override
@@ -316,7 +365,7 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    private SeekBar.OnSeekBarChangeListener seekBarChangeListener = new SeekBar.OnSeekBarChangeListener() {
+    private SeekBar.OnSeekBarChangeListener playerBarChangeListener = new SeekBar.OnSeekBarChangeListener() {
         @Override
         public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
             if(fromUser){
@@ -435,26 +484,55 @@ public class MainActivity extends AppCompatActivity {
         super.onConfigurationChanged(newConfig);
         if(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
             showSystemUI();
-            showController();
+            showVideoController();
             mHandler.removeMessages(HIDE_CONTROLLER);
             parent.setLayoutParams(port_lp);
             isLandscape = false;
         }else if(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE){
             hideSystemUI();
-            hideController();
+            hideVideoController();
             parent.setLayoutParams(lan_lp);
             isLandscape = true;
         }
     }
 
-    private void hideController(){
-        videoControllerView.setVisibility(View.GONE);
-        isControllerShowing = false;
+    private void determineOperateType(float startX, float startY, float endX, float endY){
+        operateType = new int[2];
+        if(Math.abs(startX - endX) > 30f && Math.abs(startY - endY) < 30f){
+            operateType[OPERATE_ORIENTATION] = HORIZONTAL_OPERATE;
+        }
+        if(Math.abs(startY - endY) > 30f && Math.abs(startX - endX) < 30f){
+            operateType[OPERATE_ORIENTATION] = VERTICAL_OPERATE;
+        }
+
+        Point point = new Point();
+        getWindowManager().getDefaultDisplay().getSize(point);
+        float screenWidth = point.x;
+        if(startX < screenWidth / 2){
+            operateType[OPERATE_AREA] = LEFT_AREA_OPERATE;
+        }else{
+            operateType[OPERATE_AREA] = RIGHT_AREA_OPERATE;
+        }
     }
 
-    private void showController(){
+    private void hideVideoController(){
+        videoControllerView.setVisibility(View.GONE);
+        isVideoControllerShowing = false;
+    }
+
+    private void showVideoController(){
         videoControllerView.setVisibility(View.VISIBLE);
-        isControllerShowing = true;
+        isVideoControllerShowing = true;
+    }
+
+    private void hideVolumeController(){
+        volumeController.setVisibility(View.GONE);
+        isVolumeControllerShowing = false;
+    }
+
+    private void showVolumeController(){
+        volumeController.setVisibility(View.VISIBLE);
+        isVolumeControllerShowing = true;
     }
 
     private void setCurrTimeForTvShow(){
@@ -471,8 +549,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean isVerticalOperator = false;
-
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         switch (event.getAction()){
@@ -480,20 +556,59 @@ public class MainActivity extends AppCompatActivity {
                 if(isLandscape){
                     hideSystemUI();
                 }
+                startX = event.getX();
+                startY = event.getY();
                 break;
+            case MotionEvent.ACTION_MOVE:
+                float endX = event.getX();
+                float endY = event.getY();
+                determineOperateType(startX, startY, endX, endY);
+                if(operateType[OPERATE_ORIENTATION] == HORIZONTAL_OPERATE){
+                    if(!lockVerticalOperator){
+                        lockHorizontalOperator = true;
+                        playbackOrForward(endX - startX);
+                    }
+                }else if(operateType[OPERATE_ORIENTATION] == VERTICAL_OPERATE){
+                    if(!lockHorizontalOperator){
+                        lockVerticalOperator = true;
+                        if(operateType[OPERATE_AREA] == RIGHT_AREA_OPERATE){
+                            if(!isVolumeControllerShowing){
+//                                showVolumeController();
+                            }
+                            changeVolume(endY - startY);
+                        }
+                    }
+                }
             case MotionEvent.ACTION_UP:
-                if(isControllerShowing){
-                    hideController();
+                if(isVideoControllerShowing){
+                    hideVideoController();
                     mHandler.removeMessages(HIDE_CONTROLLER);
                 }else{
-                    if(!isVerticalOperator){
-                        showController();
+                    if(!lockVerticalOperator){
+                        showVideoController();
                         mHandler.sendEmptyMessageDelayed(HIDE_CONTROLLER, 5000);
                     }
                 }
+                if(isVolumeControllerShowing){
+                    hideVolumeController();
+                }
+                lockVerticalOperator = false;
+                lockHorizontalOperator = false;
                 break;
         }
         return true;
+    }
+
+    private void playbackOrForward(float range){
+
+    }
+
+    private void changeVolume(float range){
+        if(range > 0){
+            mAudioManager.adjustVolume(AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+        }else{
+            mAudioManager.adjustVolume(AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+        }
     }
 
     private void hideSystemUI() {
